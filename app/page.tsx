@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import initialRestaurants from "../restaurants.json";
+import MacroEstimation from "./components/MacroEstimation";
 
 interface UserTargets {
   targetProtein: number;
@@ -227,7 +228,14 @@ export default function Home() {
                     {restaurant.menuItems[0].protein}g P
                   </span>
                 </div>
+                 <MacroEstimation
+                  menuItems={restaurant.menuItems}
+                  targetProtein={targetProtein}
+                  targetCalories={targetCalories}
+                />
               </div>
+              
+             
             ))}
           </div>
         )}
