@@ -26,7 +26,6 @@ export default function MacroEstimation({
   function fitScore(item: MenuItem): number {
     const calDiff = Math.abs(item.calories - targetCalories) / targetCalories;
     const proteinDiff = Math.abs(item.protein - targetProtein) / targetProtein;
-    // Protein weighted heavier — it's usually the harder target to hit eating out
     return calDiff + proteinDiff * 1.5;
   }
 
