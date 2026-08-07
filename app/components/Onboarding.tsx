@@ -52,7 +52,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-2xl">
-        {/* Biometrics */}
         <div>
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">
             1. Your Metrics
@@ -88,7 +87,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         </div>
 
-        {/* Goal Selector */}
         <div>
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">
             2. Current Fitness Goal
@@ -111,7 +109,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         </div>
 
-        {/* Target Preview */}
         <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 flex justify-between items-center text-xs">
           <span className="text-slate-400 font-medium">Calculated Targets:</span>
           <div className="flex space-x-3 font-bold font-mono">
@@ -120,7 +117,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         </div>
 
-        {/* Favorite Cuisines */}
         <div>
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">
             3. Favorite Cuisines
