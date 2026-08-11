@@ -3,9 +3,10 @@
 interface BottomNavProps {
   activeTab: "feed" | "lists" | "map" | "leaderboard" | "profile";
   setActiveTab: (tab: "feed" | "lists" | "map" | "leaderboard" | "profile") => void;
+  onAddClick: () => void;
 }
 
-export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
+export default function BottomNav({ activeTab, setActiveTab, onAddClick }: BottomNavProps) {
   return (
     <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-950/95 backdrop-blur-lg border-t border-slate-900 p-3 flex justify-around items-center text-[10px] font-semibold text-slate-400 z-20">
       <button
@@ -26,7 +27,10 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
         <span className="text-base">🗺️</span>
         <span>Map</span>
       </button>
-      <button className="bg-emerald-500 text-slate-950 p-2.5 rounded-full font-black text-sm -mt-5 shadow-lg shadow-emerald-500/20">
+      <button
+        onClick={onAddClick}
+        className="bg-emerald-500 text-slate-950 p-2.5 rounded-full font-black text-sm -mt-5 shadow-lg shadow-emerald-500/20"
+      >
         ＋
       </button>
       <button
