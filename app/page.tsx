@@ -5,19 +5,18 @@ import { supabase } from "./lib/supabase";
 import Auth from "./components/Auth";
 import Onboarding from "./components/Onboarding";
 import DicedDashboard from "./components/DicedDashboard";
-
-interface UserTargets {
-  targetProtein: number;
-  targetCalories: number;
-}
+import type { MacroTargets } from "./lib/targets";
 
 export default function Home() {
   const [session, setSession] = useState<any>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
-  const [userTargets, setUserTargets] = useState<UserTargets>({
-    targetProtein: 0,
-    targetCalories: 0,
+  const [userWeight, setUserWeight] = useState(180);
+  const [userTargets, setUserTargets] = useState<MacroTargets>({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
   });
 
   useEffect(() => {
@@ -49,9 +48,12 @@ export default function Home() {
     return (
       <Onboarding
         onComplete={(data) => {
+          setUserWeight(data.weight);
           setUserTargets({
-            targetProtein: data.targetProtein,
-            targetCalories: data.targetCalories,
+            calories: data.targetCalories,
+            protein: data.targetProtein,
+            carbs: data.targetCarbs,
+            fat: data.targetFat,
           });
           setHasCompletedOnboarding(true);
         }}
@@ -59,5 +61,12 @@ export default function Home() {
     );
   }
 
-  return <DicedDashboard userTargets={userTargets} />;
+  return (
+    <DicedDashboard
+      userTargets={userTargets}
+      userWeight={userWeight}
+      onUpdateTargets={setUserTargets}
+      session={session}
+    />
+  );
 }

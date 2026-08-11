@@ -1,28 +1,40 @@
 "use client";
 
 import { useState } from "react";
+import { calculateAutoTargets, ACTIVITY_LABELS, type ActivityLevel, type Sex } from "../lib/targets";
 
 interface OnboardingProps {
   onComplete: (data: {
     age: number;
     height: number;
     weight: number;
+    sex: Sex;
+    activityLevel: ActivityLevel;
     goal: "cut" | "maintain" | "bulk";
     cuisines: string[];
     targetProtein: number;
     targetCalories: number;
+    targetCarbs: number;
+    targetFat: number;
   }) => void;
 }
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
-  const [age, setAge] = useState<number>(20);
-  const [height, setHeight] = useState<number>(72);
-  const [weight, setWeight] = useState<number>(180);
+  // String-backed state so clearing a field doesn't snap back to "0"
+  // while the user is typing — numbers are only parsed at use.
+  const [ageStr, setAgeStr] = useState("20");
+  const [heightStr, setHeightStr] = useState("72");
+  const [weightStr, setWeightStr] = useState("180");
+  const [sex, setSex] = useState<Sex>("male");
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
   const [goal, setGoal] = useState<"cut" | "maintain" | "bulk">("cut");
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
 
-  const targetProtein = Math.round(weight * 1.1);
-  const targetCalories = goal === "cut" ? 2100 : goal === "bulk" ? 3100 : 2500;
+  const age = Number(ageStr) || 0;
+  const height = Number(heightStr) || 0;
+  const weight = Number(weightStr) || 0;
+
+  const targets = calculateAutoTargets(sex, weight, height, age, activityLevel, goal);
 
   const handleCuisineToggle = (cuisine: string) => {
     setSelectedCuisines((prev) =>
@@ -35,10 +47,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       age,
       height,
       weight,
+      sex,
+      activityLevel,
       goal,
       cuisines: selectedCuisines,
-      targetProtein,
-      targetCalories,
+      targetProtein: targets.protein,
+      targetCalories: targets.calories,
+      targetCarbs: targets.carbs,
+      targetFat: targets.fat,
     });
   };
 
@@ -52,17 +68,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-2xl">
+        {/* Biometrics */}
         <div>
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">
             1. Your Metrics
           </h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <div>
               <label className="text-xs text-slate-400 block mb-1">Age</label>
               <input
                 type="number"
-                value={age}
-                onChange={(e) => setAge(Number(e.target.value))}
+                inputMode="numeric"
+                value={ageStr}
+                onChange={(e) => setAgeStr(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
               />
             </div>
@@ -70,8 +88,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               <label className="text-xs text-slate-400 block mb-1">Height (in)</label>
               <input
                 type="number"
-                value={height}
-                onChange={(e) => setHeight(Number(e.target.value))}
+                inputMode="numeric"
+                value={heightStr}
+                onChange={(e) => setHeightStr(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
               />
             </div>
@@ -79,14 +98,46 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               <label className="text-xs text-slate-400 block mb-1">Weight (lbs)</label>
               <input
                 type="number"
-                value={weight}
-                onChange={(e) => setWeight(Number(e.target.value))}
+                inputMode="numeric"
+                value={weightStr}
+                onChange={(e) => setWeightStr(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
               />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {(["male", "female"] as Sex[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSex(s)}
+                className={`py-2 rounded-xl font-bold text-xs uppercase tracking-wider border ${
+                  sex === s
+                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
+                    : "bg-slate-950 border-slate-800 text-slate-400"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Activity Level</label>
+            <select
+              value={activityLevel}
+              onChange={(e) => setActivityLevel(e.target.value as ActivityLevel)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
+            >
+              {(Object.keys(ACTIVITY_LABELS) as ActivityLevel[]).map((level) => (
+                <option key={level} value={level}>{ACTIVITY_LABELS[level]}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
+        {/* Goal Selector */}
         <div>
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">
             2. Current Fitness Goal
@@ -109,14 +160,20 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 flex justify-between items-center text-xs">
-          <span className="text-slate-400 font-medium">Calculated Targets:</span>
-          <div className="flex space-x-3 font-bold font-mono">
-            <span className="text-emerald-400">{targetProtein}g Protein</span>
-            <span className="text-blue-400">{targetCalories} kcal</span>
+        {/* Target Preview */}
+        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-slate-400 font-medium">Calculated Targets:</span>
+            <span className="text-blue-400 font-bold font-mono">{targets.calories} kcal</span>
+          </div>
+          <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+            <span>{targets.protein}g P</span>
+            <span>{targets.carbs}g C</span>
+            <span>{targets.fat}g F</span>
           </div>
         </div>
 
+        {/* Favorite Cuisines */}
         <div>
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">
             3. Favorite Cuisines
