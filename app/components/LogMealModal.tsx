@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { combineScore, type LoggedMeal } from "../lib/ranking";
 
 interface MenuItemLike {
@@ -59,7 +59,7 @@ export default function LogMealModal({
     if (!selectedRestaurant || !dishName) return;
 
     const meal: LoggedMeal = {
-      id: editingMeal?.id ?? `${Date.now()}`,
+      id: editingMeal?.id ?? "",
       restaurantId: selectedRestaurant.id,
       restaurantName: selectedRestaurant.name,
       cuisine: selectedRestaurant.cuisine,
@@ -88,7 +88,6 @@ export default function LogMealModal({
           <button onClick={onClose} className="text-slate-500 text-sm">✕</button>
         </div>
 
-        {/* Step indicator */}
         <div className="flex space-x-1.5">
           {(["details", "macro", "taste", "review"] as Step[]).map((s) => (
             <div
@@ -100,7 +99,6 @@ export default function LogMealModal({
           ))}
         </div>
 
-        {/* STEP 1: Details */}
         {step === "details" && (
           <div className="space-y-4">
             <div>
@@ -178,7 +176,6 @@ export default function LogMealModal({
           </div>
         )}
 
-        {/* STEP 2: Macro rating */}
         {step === "macro" && (
           <div className="space-y-6">
             <div className="text-center py-4">
@@ -219,7 +216,6 @@ export default function LogMealModal({
           </div>
         )}
 
-        {/* STEP 3: Taste rating */}
         {step === "taste" && (
           <div className="space-y-6">
             <div className="text-center py-4">
@@ -260,7 +256,6 @@ export default function LogMealModal({
           </div>
         )}
 
-        {/* STEP 4: Review */}
         {step === "review" && (
           <div className="space-y-4">
             <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 space-y-3">

@@ -6,6 +6,7 @@ import BottomNav from "./BottomNav";
 import MacroEstimation from "./MacroEstimation";
 import LogMealModal from "./LogMealModal";
 import Profile from "./Profile";
+import { supabase } from "../lib/supabase";
 import { rankLoggedMeals, type LoggedMeal } from "../lib/ranking";
 import type { MacroTargets } from "../lib/targets";
 
@@ -21,6 +22,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
   const [listView, setListView] = useState<"ranked" | "nearby">("ranked");
   const [showLogModal, setShowLogModal] = useState(false);
   const [loggedMeals, setLoggedMeals] = useState<LoggedMeal[]>([]);
+  const [loadingMeals, setLoadingMeals] = useState(true);
   const [editingMeal, setEditingMeal] = useState<LoggedMeal | null>(null);
 
   const [nearbyRestaurants, setNearbyRestaurants] = useState<any[]>([]);
@@ -30,6 +32,38 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
   useEffect(() => {
     loadNearbyRestaurants();
   }, []);
+
+  useEffect(() => {
+    loadLoggedMeals();
+  }, []);
+
+  async function loadLoggedMeals() {
+    setLoadingMeals(true);
+    const { data, error } = await supabase
+      .from("logged_meals")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (data) {
+      const meals: LoggedMeal[] = data.map((row: any) => ({
+        id: row.id,
+        restaurantId: row.restaurant_id,
+        restaurantName: row.restaurant_name,
+        cuisine: row.cuisine,
+        dishName: row.dish_name,
+        calories: row.calories,
+        protein: row.protein,
+        carbs: row.carbs,
+        fat: row.fat,
+        macroScore: row.macro_score,
+        tasteScore: row.taste_score,
+        combinedScore: row.combined_score,
+        createdAt: row.created_at,
+      }));
+      setLoggedMeals(meals);
+    }
+    setLoadingMeals(false);
+  }
 
   function loadNearbyRestaurants() {
     setLoadingNearby(true);
@@ -73,12 +107,36 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
     );
   }
 
-  function handleSaveMeal(meal: LoggedMeal) {
-    setLoggedMeals((prev) => {
-      const exists = prev.some((m) => m.id === meal.id);
-      return exists ? prev.map((m) => (m.id === meal.id ? meal : m)) : [...prev, meal];
-    });
+  async function handleSaveMeal(meal: LoggedMeal) {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) return;
+
+    const isEditing = loggedMeals.some((m) => m.id === meal.id);
+
+    const row = {
+      user_id: userId,
+      restaurant_id: meal.restaurantId,
+      restaurant_name: meal.restaurantName,
+      cuisine: meal.cuisine,
+      dish_name: meal.dishName,
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat,
+      macro_score: meal.macroScore,
+      taste_score: meal.tasteScore,
+      combined_score: meal.combinedScore,
+    };
+
+    if (isEditing) {
+      await supabase.from("logged_meals").update(row).eq("id", meal.id);
+    } else {
+      await supabase.from("logged_meals").insert(row);
+    }
+
     setEditingMeal(null);
+    await loadLoggedMeals();
   }
 
   const loggableRestaurants = [
@@ -152,7 +210,11 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
               <span>{listView === "ranked" ? "YOUR RANKED SPOTS" : "NEARBY"}</span>
             </div>
 
-            {listView === "ranked" && rankedEntries.length === 0 && (
+            {listView === "ranked" && loadingMeals && (
+              <p className="text-[11px] text-slate-500 text-center py-6">Loading your rankings...</p>
+            )}
+
+            {listView === "ranked" && !loadingMeals && rankedEntries.length === 0 && (
               <div className="text-center py-12 space-y-3">
                 <p className="text-slate-500 text-sm">You haven't ranked anything yet.</p>
                 <button
@@ -168,6 +230,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
             )}
 
             {listView === "ranked" &&
+              !loadingMeals &&
               rankedEntries.map((entry) => (
                 <div
                   key={entry.restaurantId}
@@ -288,6 +351,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
           <Profile
             email={session?.user?.email}
             targets={userTargets}
+            weight={userWeight}
             onUpdateTargets={onUpdateTargets}
             mealsLoggedCount={loggedMeals.length}
             restaurantsRankedCount={rankedEntries.length}
