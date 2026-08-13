@@ -29,6 +29,8 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
   const [loadingNearby, setLoadingNearby] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
+  const [sharedMenuItems, setSharedMenuItems] = useState<Record<string, any[]>>({});
+
   useEffect(() => {
     loadNearbyRestaurants();
   }, []);
@@ -36,6 +38,28 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
   useEffect(() => {
     loadLoggedMeals();
   }, []);
+
+  useEffect(() => {
+    loadSharedMenuItems();
+  }, []);
+
+  async function loadSharedMenuItems() {
+    const { data } = await supabase.from("restaurant_menu_items").select("*");
+    if (!data) return;
+
+    const grouped: Record<string, any[]> = {};
+    for (const item of data) {
+      if (!grouped[item.restaurant_id]) grouped[item.restaurant_id] = [];
+      grouped[item.restaurant_id].push({
+        name: item.dish_name,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+      });
+    }
+    setSharedMenuItems(grouped);
+  }
 
   async function loadLoggedMeals() {
     setLoadingMeals(true);
@@ -135,8 +159,27 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
       await supabase.from("logged_meals").insert(row);
     }
 
+    // Contribute this dish to the restaurant's shared menu, so future users
+    // (and future visits) see it as a known item instead of re-estimating.
+    if (meal.calories !== undefined && meal.protein !== undefined) {
+      await supabase.from("restaurant_menu_items").upsert(
+        {
+          restaurant_id: meal.restaurantId,
+          restaurant_name: meal.restaurantName,
+          dish_name: meal.dishName,
+          calories: meal.calories,
+          protein: meal.protein,
+          carbs: meal.carbs,
+          fat: meal.fat,
+          source: "user_submitted",
+        },
+        { onConflict: "restaurant_id,dish_name", ignoreDuplicates: true }
+      );
+    }
+
     setEditingMeal(null);
     await loadLoggedMeals();
+    await loadSharedMenuItems();
   }
 
   const loggableRestaurants = [
@@ -144,7 +187,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
       id: r.id,
       name: r.name,
       cuisine: r.cuisine,
-      menuItems: r.menuItems,
+      menuItems: [...(r.menuItems ?? []), ...(sharedMenuItems[r.id] ?? [])],
     })),
     ...nearbyRestaurants
       .filter((nr) => !initialRestaurants.some((r) => r.name === nr.name))
@@ -152,7 +195,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
         id: nr.placeId,
         name: nr.name,
         cuisine: nr.cuisine,
-        menuItems: nr.menuItems,
+        menuItems: [...(nr.menuItems ?? []), ...(sharedMenuItems[nr.placeId] ?? [])],
       })),
   ];
 
@@ -293,37 +336,44 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
                   </p>
                 )}
 
-                {nearbyRestaurants.map((restaurant) => (
-                  <div
-                    key={restaurant.placeId}
-                    className="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 space-y-3"
-                  >
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-bold text-base text-slate-100">{restaurant.name}</h3>
-                      <span className="text-[10px] font-semibold bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-slate-800">
-                        {restaurant.cuisine ?? "restaurant"}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-500">{restaurant.address}</p>
-                    {restaurant.rating && (
-                      <span className="text-[10px] text-emerald-400 font-mono">
-                        ⭐ {restaurant.rating}
-                      </span>
-                    )}
+                {nearbyRestaurants.map((restaurant) => {
+                  const combinedMenu = [
+                    ...(restaurant.menuItems ?? []),
+                    ...(sharedMenuItems[restaurant.placeId] ?? []),
+                  ];
 
-                    {restaurant.menuItems ? (
-                      <MacroEstimation
-                        menuItems={restaurant.menuItems}
-                        targetProtein={userTargets.protein}
-                        targetCalories={userTargets.calories}
-                      />
-                    ) : (
-                      <div className="text-[11px] text-slate-500 italic border border-slate-800/60 rounded-lg p-2 text-center">
-                        Menu not yet available — be the first to add a dish
+                  return (
+                    <div
+                      key={restaurant.placeId}
+                      className="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 space-y-3"
+                    >
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-bold text-base text-slate-100">{restaurant.name}</h3>
+                        <span className="text-[10px] font-semibold bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-slate-800">
+                          {restaurant.cuisine ?? "restaurant"}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <p className="text-[10px] text-slate-500">{restaurant.address}</p>
+                      {restaurant.rating && (
+                        <span className="text-[10px] text-emerald-400 font-mono">
+                          ⭐ {restaurant.rating}
+                        </span>
+                      )}
+
+                      {combinedMenu.length > 0 ? (
+                        <MacroEstimation
+                          menuItems={combinedMenu}
+                          targetProtein={userTargets.protein}
+                          targetCalories={userTargets.calories}
+                        />
+                      ) : (
+                        <div className="text-[11px] text-slate-500 italic border border-slate-800/60 rounded-lg p-2 text-center">
+                          Menu not yet available — be the first to add a dish
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
           </>

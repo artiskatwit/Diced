@@ -37,10 +37,14 @@ export default function LogMealModal({
 
   const [restaurantId, setRestaurantId] = useState(editingMeal?.restaurantId ?? "");
   const [dishName, setDishName] = useState(editingMeal?.dishName ?? "");
+  const [dishDescription, setDishDescription] = useState("");
   const [calories, setCalories] = useState(editingMeal?.calories?.toString() ?? "");
   const [protein, setProtein] = useState(editingMeal?.protein?.toString() ?? "");
   const [carbs, setCarbs] = useState(editingMeal?.carbs?.toString() ?? "");
   const [fat, setFat] = useState(editingMeal?.fat?.toString() ?? "");
+  const [macroSource, setMacroSource] = useState<string | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
 
   const [macroScore, setMacroScore] = useState(editingMeal?.macroScore ?? 5);
   const [tasteScore, setTasteScore] = useState(editingMeal?.tasteScore ?? 5);
@@ -53,6 +57,41 @@ export default function LogMealModal({
     setProtein(String(item.protein));
     setCarbs(item.carbs !== undefined ? String(item.carbs) : "");
     setFat(item.fat !== undefined ? String(item.fat) : "");
+    setMacroSource("listed");
+  }
+
+  async function handleEstimateMacros() {
+    if (!dishName) return;
+    setEstimating(true);
+    setEstimateError(null);
+
+    try {
+      const res = await fetch("/api/estimate-macros", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dishes: [{ name: dishName, description: dishDescription || undefined }],
+        }),
+      });
+      const data = await res.json();
+      const result = data.dishes?.[0];
+
+      if (!result || result.error) {
+        setEstimateError("Couldn't estimate this dish — try adding a short description or enter macros manually.");
+        setEstimating(false);
+        return;
+      }
+
+      setCalories(String(result.calories));
+      setProtein(String(result.protein));
+      setCarbs(result.carbs !== undefined ? String(result.carbs) : "");
+      setFat(result.fat !== undefined ? String(result.fat) : "");
+      setMacroSource(result.source);
+    } catch (err) {
+      setEstimateError("Something went wrong estimating this dish.");
+    }
+
+    setEstimating(false);
   }
 
   function handleSave() {
@@ -108,10 +147,12 @@ export default function LogMealModal({
                 onChange={(e) => {
                   setRestaurantId(e.target.value);
                   setDishName("");
+                  setDishDescription("");
                   setCalories("");
                   setProtein("");
                   setCarbs("");
                   setFat("");
+                  setMacroSource(null);
                 }}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
               >
@@ -124,7 +165,7 @@ export default function LogMealModal({
 
             {selectedRestaurant?.menuItems && selectedRestaurant.menuItems.length > 0 && (
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Pick from menu (optional)</label>
+                <label className="text-xs text-slate-400 block mb-1">Known menu items</label>
                 <div className="flex flex-wrap gap-2">
                   {selectedRestaurant.menuItems.map((item) => (
                     <button
@@ -145,25 +186,72 @@ export default function LogMealModal({
             )}
 
             <div>
-              <label className="text-xs text-slate-400 block mb-1">Dish name</label>
+              <label className="text-xs text-slate-400 block mb-1">
+                Don't see it? Type any dish name
+              </label>
               <input
                 type="text"
                 value={dishName}
-                onChange={(e) => setDishName(e.target.value)}
-                placeholder="e.g. Grilled chicken bowl"
+                onChange={(e) => {
+                  setDishName(e.target.value);
+                  setMacroSource(null);
+                }}
+                placeholder="e.g. The Firecracker Bowl"
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
               />
+              <input
+                type="text"
+                value={dishDescription}
+                onChange={(e) => setDishDescription(e.target.value)}
+                placeholder="Optional: what's in it? (helps accuracy)"
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-400 mt-2"
+              />
+
+              <button
+                type="button"
+                onClick={handleEstimateMacros}
+                disabled={!dishName || estimating}
+                className="w-full mt-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 disabled:opacity-40 font-bold py-2.5 rounded-lg text-xs"
+              >
+                {estimating ? "Estimating..." : "✨ Get Macros From Name"}
+              </button>
+
+              {estimateError && (
+                <p className="text-[11px] text-red-400 mt-1">{estimateError}</p>
+              )}
+
+              {macroSource && !estimateError && (
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {macroSource === "listed" && "From known menu data"}
+                  {macroSource === "estimated_spoonacular" && "Estimated from nutrition database"}
+                  {macroSource === "estimated_gemini" && "AI-estimated from dish description"}
+                </p>
+              )}
             </div>
 
-            <div>
-              <label className="text-xs text-slate-400 block mb-1">Macros (optional)</label>
-              <div className="grid grid-cols-4 gap-2">
-                <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} placeholder="Cal" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
-                <input type="number" value={protein} onChange={(e) => setProtein(e.target.value)} placeholder="Protein" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
-                <input type="number" value={carbs} onChange={(e) => setCarbs(e.target.value)} placeholder="Carbs" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
-                <input type="number" value={fat} onChange={(e) => setFat(e.target.value)} placeholder="Fat" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
+            {(calories || protein || carbs || fat) && (
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">
+                  Macros {macroSource ? "(auto-filled — edit if needed)" : "(enter manually)"}
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  <input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} placeholder="Cal" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
+                  <input type="number" value={protein} onChange={(e) => setProtein(e.target.value)} placeholder="Protein" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
+                  <input type="number" value={carbs} onChange={(e) => setCarbs(e.target.value)} placeholder="Carbs" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
+                  <input type="number" value={fat} onChange={(e) => setFat(e.target.value)} placeholder="Fat" className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" />
+                </div>
               </div>
-            </div>
+            )}
+
+            {!calories && !protein && (
+              <button
+                type="button"
+                onClick={() => setCalories("0")}
+                className="text-[11px] text-slate-500 underline"
+              >
+                Skip macros, enter manually instead
+              </button>
+            )}
 
             <button
               type="button"
@@ -263,6 +351,12 @@ export default function LogMealModal({
                 <p className="font-bold text-slate-100">{dishName}</p>
                 <p className="text-xs text-slate-500">{selectedRestaurant?.name}</p>
               </div>
+
+              {calories && (
+                <p className="text-[11px] text-slate-500 font-mono">
+                  {calories} kcal | {protein}g P | {carbs}g C | {fat}g F
+                </p>
+              )}
 
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400">Macro fit</span>
