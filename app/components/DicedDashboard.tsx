@@ -159,8 +159,6 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
       await supabase.from("logged_meals").insert(row);
     }
 
-    // Contribute this dish to the restaurant's shared menu, so future users
-    // (and future visits) see it as a known item instead of re-estimating.
     if (meal.calories !== undefined && meal.protein !== undefined) {
       await supabase.from("restaurant_menu_items").upsert(
         {
@@ -180,6 +178,11 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
     setEditingMeal(null);
     await loadLoggedMeals();
     await loadSharedMenuItems();
+  }
+
+  async function handleDeleteMeal(mealId: string) {
+    await supabase.from("logged_meals").delete().eq("id", mealId);
+    await loadLoggedMeals();
   }
 
   const loggableRestaurants = [
@@ -307,16 +310,29 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
                     {entry.mealCount} meal{entry.mealCount > 1 ? "s" : ""} logged here
                   </p>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingMeal(entry.bestMeal);
-                      setShowLogModal(true);
-                    }}
-                    className="text-[11px] text-emerald-400 font-bold border border-emerald-900/60 bg-emerald-950/30 px-3 py-1.5 rounded-lg w-full"
-                  >
-                    Re-rank this meal
-                  </button>
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingMeal(entry.bestMeal);
+                        setShowLogModal(true);
+                      }}
+                      className="flex-1 text-[11px] text-emerald-400 font-bold border border-emerald-900/60 bg-emerald-950/30 px-3 py-1.5 rounded-lg"
+                    >
+                      Re-rank this meal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Delete "${entry.bestMeal.dishName}"?`)) {
+                          handleDeleteMeal(entry.bestMeal.id);
+                        }
+                      }}
+                      className="text-[11px] text-red-400 font-bold border border-red-900/60 bg-red-950/20 px-3 py-1.5 rounded-lg"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               ))}
 
