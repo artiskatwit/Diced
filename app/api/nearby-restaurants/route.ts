@@ -1,4 +1,3 @@
-// app/api/nearby-restaurants/route.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
@@ -10,9 +9,6 @@ const CUISINE_OPTIONS = [
   "Pizza", "Cafe", "Bakery", "BBQ", "Vietnamese", "Fine Dining", "Other",
 ];
 
-// In-memory cache: placeId -> cuisine. Persists across requests as long as
-// the dev server keeps running, so we never pay to reclassify the same
-// restaurant twice.
 const cuisineCache = new Map<string, string>();
 
 async function classifyCuisine(placeId: string, name: string, placesType: string | null): Promise<string> {
@@ -71,12 +67,13 @@ export async function GET(req: Request) {
             "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating",
         },
         body: JSON.stringify({
-          includedTypes: ["restaurant"],
-          maxResultCount: 15,
+          includedTypes: ["restaurant", "fast_food_restaurant", "meal_takeaway", "cafe"],
+          maxResultCount: 20,
+          rankPreference: "DISTANCE",
           locationRestriction: {
             circle: {
               center: { latitude: Number(lat), longitude: Number(lng) },
-              radius: 1500.0,
+              radius: 3000.0,
             },
           },
         }),

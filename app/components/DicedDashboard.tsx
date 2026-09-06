@@ -24,6 +24,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
   const [loggedMeals, setLoggedMeals] = useState<LoggedMeal[]>([]);
   const [loadingMeals, setLoadingMeals] = useState(true);
   const [editingMeal, setEditingMeal] = useState<LoggedMeal | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [nearbyRestaurants, setNearbyRestaurants] = useState<any[]>([]);
   const [loadingNearby, setLoadingNearby] = useState(false);
@@ -82,6 +83,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
         macroScore: row.macro_score,
         tasteScore: row.taste_score,
         combinedScore: row.combined_score,
+        photoUrl: row.photo_url,
         createdAt: row.created_at,
       }));
       setLoggedMeals(meals);
@@ -151,6 +153,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
       macro_score: meal.macroScore,
       taste_score: meal.tasteScore,
       combined_score: meal.combinedScore,
+      photo_url: meal.photoUrl,
     };
 
     if (isEditing) {
@@ -204,6 +207,25 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
 
   const rankedEntries = rankLoggedMeals(loggedMeals);
 
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredRanked = q
+    ? rankedEntries.filter(
+        (e) =>
+          e.restaurantName.toLowerCase().includes(q) ||
+          e.cuisine?.toLowerCase().includes(q) ||
+          e.bestMeal.dishName.toLowerCase().includes(q)
+      )
+    : rankedEntries;
+
+  const filteredNearby = q
+    ? nearbyRestaurants.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.cuisine?.toLowerCase().includes(q)
+      )
+    : nearbyRestaurants;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24 max-w-md mx-auto border-x border-slate-900 shadow-2xl relative">
       <header className="p-4 border-b border-slate-900 sticky top-0 bg-slate-950/90 backdrop-blur-md z-10 space-y-3">
@@ -218,6 +240,8 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
 
         <input
           type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search restaurant, cuisine, or meal..."
           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
         />
@@ -260,24 +284,28 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
               <p className="text-[11px] text-slate-500 text-center py-6">Loading your rankings...</p>
             )}
 
-            {listView === "ranked" && !loadingMeals && rankedEntries.length === 0 && (
+            {listView === "ranked" && !loadingMeals && filteredRanked.length === 0 && (
               <div className="text-center py-12 space-y-3">
-                <p className="text-slate-500 text-sm">You haven't ranked anything yet.</p>
-                <button
-                  onClick={() => {
-                    setEditingMeal(null);
-                    setShowLogModal(true);
-                  }}
-                  className="text-emerald-400 text-xs font-bold border border-emerald-900/60 bg-emerald-950/30 px-4 py-2 rounded-lg"
-                >
-                  Tap + to log your first meal
-                </button>
+                <p className="text-slate-500 text-sm">
+                  {q ? "No matches found." : "You haven't ranked anything yet."}
+                </p>
+                {!q && (
+                  <button
+                    onClick={() => {
+                      setEditingMeal(null);
+                      setShowLogModal(true);
+                    }}
+                    className="text-emerald-400 text-xs font-bold border border-emerald-900/60 bg-emerald-950/30 px-4 py-2 rounded-lg"
+                  >
+                    Tap + to log your first meal
+                  </button>
+                )}
               </div>
             )}
 
             {listView === "ranked" &&
               !loadingMeals &&
-              rankedEntries.map((entry) => (
+              filteredRanked.map((entry) => (
                 <div
                   key={entry.restaurantId}
                   className="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 space-y-3"
@@ -293,6 +321,14 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
                       {entry.cuisine ?? "restaurant"}
                     </span>
                   </div>
+
+                  {entry.bestMeal.photoUrl && (
+                    <img
+                      src={entry.bestMeal.photoUrl}
+                      alt={entry.bestMeal.dishName}
+                      className="w-full h-40 object-cover rounded-xl"
+                    />
+                  )}
 
                   <div className="bg-slate-950 border border-slate-800/60 rounded-xl p-3 flex justify-between items-center">
                     <div>
@@ -346,13 +382,13 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
                   <p className="text-[11px] text-red-400 mb-2">{locationError}</p>
                 )}
 
-                {!loadingNearby && !locationError && nearbyRestaurants.length === 0 && (
+                {!loadingNearby && !locationError && filteredNearby.length === 0 && (
                   <p className="text-[11px] text-slate-500 text-center py-6">
-                    No nearby restaurants found.
+                    {q ? "No matches found." : "No nearby restaurants found."}
                   </p>
                 )}
 
-                {nearbyRestaurants.map((restaurant) => {
+                {filteredNearby.map((restaurant) => {
                   const combinedMenu = [
                     ...(restaurant.menuItems ?? []),
                     ...(sharedMenuItems[restaurant.placeId] ?? []),

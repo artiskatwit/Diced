@@ -8,9 +8,10 @@ export interface LoggedMeal {
   protein?: number;
   carbs?: number;
   fat?: number;
-  macroScore: number; // 1-10, user-rated: how macro-friendly it felt
-  tasteScore: number; // 1-10, user-rated: how it tasted
-  combinedScore: number; // average of the two
+  macroScore: number;
+  tasteScore: number;
+  combinedScore: number;
+  photoUrl?: string;
   createdAt: string;
 }
 

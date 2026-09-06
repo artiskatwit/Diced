@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "../lib/supabase";
 import { combineScore, type LoggedMeal } from "../lib/ranking";
 
 interface MenuItemLike {
@@ -46,6 +47,10 @@ export default function LogMealModal({
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
 
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(editingMeal?.photoUrl ?? null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   const [macroScore, setMacroScore] = useState(editingMeal?.macroScore ?? 5);
   const [tasteScore, setTasteScore] = useState(editingMeal?.tasteScore ?? 5);
 
@@ -70,7 +75,11 @@ export default function LogMealModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dishes: [{ name: dishName, description: dishDescription || undefined }],
+          dishes: [{
+            name: dishName,
+            description: dishDescription || undefined,
+            restaurantName: selectedRestaurant?.name,
+          }],
         }),
       });
       const data = await res.json();
@@ -94,8 +103,96 @@ export default function LogMealModal({
     setEstimating(false);
   }
 
-  function handleSave() {
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
+  async function handleEstimateFromPhoto() {
+    if (!photoFile) return;
+    setEstimating(true);
+    setEstimateError(null);
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(photoFile);
+      });
+
+      const res = await fetch("/api/estimate-macros-from-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType: photoFile.type,
+          restaurantName: selectedRestaurant?.name,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (result.error) {
+        setEstimateError("Couldn't estimate from photo — try typing the dish name instead.");
+        setEstimating(false);
+        return;
+      }
+
+      if (!dishName) setDishName(result.dishName);
+      setCalories(String(result.calories));
+      setProtein(String(result.protein));
+      setCarbs(result.carbs !== undefined ? String(result.carbs) : "");
+      setFat(result.fat !== undefined ? String(result.fat) : "");
+      setMacroSource(result.source);
+    } catch (err) {
+      setEstimateError("Something went wrong estimating from the photo.");
+    }
+
+    setEstimating(false);
+  }
+
+  // Uploads the selected photo to Supabase Storage under the user's own
+  // folder (required by our storage policy) and returns its public URL.
+  async function uploadPhotoIfNeeded(): Promise<string | undefined> {
+    if (!photoFile) return editingMeal?.photoUrl;
+
+    setUploadingPhoto(true);
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      setUploadingPhoto(false);
+      return undefined;
+    }
+
+    const fileExt = photoFile.name.split(".").pop() || "jpg";
+    const filePath = `${userId}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("meal-photos")
+      .upload(filePath, photoFile);
+
+    setUploadingPhoto(false);
+
+    if (uploadError) {
+      console.error("Photo upload failed:", uploadError);
+      return undefined;
+    }
+
+    const { data: urlData } = supabase.storage.from("meal-photos").getPublicUrl(filePath);
+    return urlData.publicUrl;
+  }
+
+  async function handleSave() {
     if (!selectedRestaurant || !dishName) return;
+
+    const photoUrl = await uploadPhotoIfNeeded();
 
     const meal: LoggedMeal = {
       id: editingMeal?.id ?? "",
@@ -110,6 +207,7 @@ export default function LogMealModal({
       macroScore,
       tasteScore,
       combinedScore: combineScore(macroScore, tasteScore),
+      photoUrl,
       createdAt: editingMeal?.createdAt ?? new Date().toISOString(),
     };
 
@@ -153,6 +251,8 @@ export default function LogMealModal({
                   setCarbs("");
                   setFat("");
                   setMacroSource(null);
+                  setPhotoFile(null);
+                  setPhotoPreview(null);
                 }}
                 className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
               >
@@ -216,15 +316,43 @@ export default function LogMealModal({
                 {estimating ? "Estimating..." : "✨ Get Macros From Name"}
               </button>
 
+              <div className="mt-3 pt-3 border-t border-slate-800">
+                <label className="text-xs text-slate-400 block mb-1">Or snap a photo of your meal</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoSelect}
+                  className="w-full text-xs text-slate-400 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-500/10 file:text-emerald-400 file:text-xs file:font-bold"
+                />
+
+                {photoPreview && (
+                  <div className="mt-2 space-y-2">
+                    <img src={photoPreview} alt="Meal preview" className="w-full h-32 object-cover rounded-lg" />
+                    {photoFile && (
+                      <button
+                        type="button"
+                        onClick={handleEstimateFromPhoto}
+                        disabled={estimating}
+                        className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 disabled:opacity-40 font-bold py-2.5 rounded-lg text-xs"
+                      >
+                        {estimating ? "Analyzing photo..." : "📸 Estimate From Photo"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {estimateError && (
-                <p className="text-[11px] text-red-400 mt-1">{estimateError}</p>
+                <p className="text-[11px] text-red-400 mt-2">{estimateError}</p>
               )}
 
               {macroSource && !estimateError && (
-                <p className="text-[10px] text-slate-500 mt-1">
+                <p className="text-[10px] text-slate-500 mt-2">
                   {macroSource === "listed" && "From known menu data"}
                   {macroSource === "estimated_spoonacular" && "Estimated from nutrition database"}
                   {macroSource === "estimated_gemini" && "AI-estimated from dish description"}
+                  {macroSource === "estimated_gemini_photo" && "AI-estimated from your photo"}
                 </p>
               )}
             </div>
@@ -347,6 +475,9 @@ export default function LogMealModal({
         {step === "review" && (
           <div className="space-y-4">
             <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4 space-y-3">
+              {photoPreview && (
+                <img src={photoPreview} alt="Meal" className="w-full h-40 object-cover rounded-lg" />
+              )}
               <div>
                 <p className="font-bold text-slate-100">{dishName}</p>
                 <p className="text-xs text-slate-500">{selectedRestaurant?.name}</p>
@@ -385,9 +516,10 @@ export default function LogMealModal({
               <button
                 type="button"
                 onClick={handleSave}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl text-sm uppercase tracking-wider"
+                disabled={uploadingPhoto}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black py-3 rounded-xl text-sm uppercase tracking-wider"
               >
-                {editingMeal ? "Save Changes" : "Save Ranking"}
+                {uploadingPhoto ? "Uploading photo..." : editingMeal ? "Save Changes" : "Save Ranking"}
               </button>
             </div>
           </div>
