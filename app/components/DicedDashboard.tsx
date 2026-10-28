@@ -17,6 +17,12 @@ interface DicedDashboardProps {
   session: any;
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  website_menu: "Menu from the restaurant's website (macros estimated unless listed)",
+  chain_ai: "Menu based on published chain nutrition (AI-compiled)",
+  estimated_menu_ai: "AI-estimated menu: typical dishes, macros are estimates",
+};
+
 export default function DicedDashboard({ userTargets, userWeight, onUpdateTargets, session }: DicedDashboardProps) {
   const [activeTab, setActiveTab] = useState<"feed" | "lists" | "map" | "leaderboard" | "profile">("lists");
   const [listView, setListView] = useState<"ranked" | "nearby">("ranked");
@@ -31,6 +37,8 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
   const [locationError, setLocationError] = useState<string | null>(null);
 
   const [sharedMenuItems, setSharedMenuItems] = useState<Record<string, any[]>>({});
+  const [generatingMenuFor, setGeneratingMenuFor] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadNearbyRestaurants();
@@ -57,6 +65,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
         protein: item.protein,
         carbs: item.carbs,
         fat: item.fat,
+        source: item.source,
       });
     }
     setSharedMenuItems(grouped);
@@ -64,7 +73,7 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
 
   async function loadLoggedMeals() {
     setLoadingMeals(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("logged_meals")
       .select("*")
       .order("created_at", { ascending: false });
@@ -131,6 +140,54 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
         setLoadingNearby(false);
       }
     );
+  }
+
+  // Reads the restaurant's real website menu when possible, falls back to
+  // AI estimates, and saves the result so each spot is only read once.
+  async function handleGenerateMenu(restaurant: any) {
+    setGeneratingMenuFor(restaurant.placeId);
+    setMenuError((prev) => ({ ...prev, [restaurant.placeId]: "" }));
+
+    try {
+      const res = await fetch("/api/parse-menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantName: restaurant.name,
+          cuisine: restaurant.cuisine,
+          address: restaurant.address,
+          website: restaurant.website,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.error || !data.items || data.items.length === 0) {
+        setMenuError((prev) => ({ ...prev, [restaurant.placeId]: "Couldn't build a menu for this spot." }));
+        setGeneratingMenuFor(null);
+        return;
+      }
+
+      const rows = data.items.map((item: any) => ({
+        restaurant_id: restaurant.placeId,
+        restaurant_name: restaurant.name,
+        dish_name: item.name,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+        source: data.source,
+      }));
+
+      await supabase
+        .from("restaurant_menu_items")
+        .upsert(rows, { onConflict: "restaurant_id,dish_name", ignoreDuplicates: true });
+
+      await loadSharedMenuItems();
+    } catch (err) {
+      setMenuError((prev) => ({ ...prev, [restaurant.placeId]: "Something went wrong building the menu." }));
+    }
+
+    setGeneratingMenuFor(null);
   }
 
   async function handleSaveMeal(meal: LoggedMeal) {
@@ -389,10 +446,10 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
                 )}
 
                 {filteredNearby.map((restaurant) => {
-                  const combinedMenu = [
-                    ...(restaurant.menuItems ?? []),
-                    ...(sharedMenuItems[restaurant.placeId] ?? []),
-                  ];
+                  const shared = sharedMenuItems[restaurant.placeId] ?? [];
+                  const combinedMenu = [...(restaurant.menuItems ?? []), ...shared];
+                  const menuSource = shared.find((i: any) => SOURCE_LABELS[i.source])?.source;
+                  const isGenerating = generatingMenuFor === restaurant.placeId;
 
                   return (
                     <div
@@ -413,14 +470,33 @@ export default function DicedDashboard({ userTargets, userWeight, onUpdateTarget
                       )}
 
                       {combinedMenu.length > 0 ? (
-                        <MacroEstimation
-                          menuItems={combinedMenu}
-                          targetProtein={userTargets.protein}
-                          targetCalories={userTargets.calories}
-                        />
+                        <>
+                          {menuSource && (
+                            <p className="text-[10px] text-slate-500 italic">
+                              {SOURCE_LABELS[menuSource]}
+                            </p>
+                          )}
+                          <MacroEstimation
+                            menuItems={combinedMenu}
+                            targetProtein={userTargets.protein}
+                            targetCalories={userTargets.calories}
+                          />
+                        </>
                       ) : (
-                        <div className="text-[11px] text-slate-500 italic border border-slate-800/60 rounded-lg p-2 text-center">
-                          Menu not yet available — be the first to add a dish
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateMenu(restaurant)}
+                            disabled={isGenerating}
+                            className="w-full text-[11px] text-emerald-400 font-bold border border-emerald-900/60 bg-emerald-950/30 py-2 rounded-lg disabled:opacity-40"
+                          >
+                            {isGenerating ? "Reading menu..." : "✨ Get menu & macros"}
+                          </button>
+                          {menuError[restaurant.placeId] && (
+                            <p className="text-[11px] text-red-400 text-center">
+                              {menuError[restaurant.placeId]}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>

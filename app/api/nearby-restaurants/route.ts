@@ -64,7 +64,7 @@ export async function GET(req: Request) {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": process.env.GOOGLE_PLACES_API_KEY!,
           "X-Goog-FieldMask":
-            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating",
+            "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating,places.websiteUri",
         },
         body: JSON.stringify({
           includedTypes: ["restaurant", "fast_food_restaurant", "meal_takeaway", "cafe"],
@@ -101,6 +101,7 @@ export async function GET(req: Request) {
           lng: place.location?.longitude,
           cuisine,
           rating: place.rating ?? null,
+          website: place.websiteUri ?? null,
         };
       })
     );
